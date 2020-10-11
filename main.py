@@ -4,6 +4,7 @@ from PyQt5.QtGui import QGuiApplication
 from PyQt5.QtQuick import QQuickView
 from PyQt5.QtQml import QQmlApplicationEngine
 
+from asyncio import new_event_loop, Queue, wait_for, TimeoutError, set_event_loop, sleep
 from threading import Thread
 from pathlib import Path
 import sys
@@ -31,9 +32,6 @@ class ApplicationState(QObject):
 
 
 async def logic_process(signals):
-    from asyncio import wait_for
-    from asyncio import TimeoutError
-    from asyncio import sleep
     while True:
         try:
             event = await wait_for(signals.get(), 10)
@@ -44,14 +42,12 @@ async def logic_process(signals):
 
 
 async def ping():
-    from asyncio import sleep
     while True:
         print('.', end='', flush=True)
         await sleep(1)
 
 
 def application_live(loop, signals):
-    from asyncio import set_event_loop
     set_event_loop(loop)
     pinging = loop.create_task(ping())
     processing = loop.create_task(logic_process(signals))
@@ -65,7 +61,6 @@ def application_live(loop, signals):
 
 
 if __name__ == '__main__':
-    from asyncio import new_event_loop, Queue
     loop = new_event_loop()
     signals = Queue(loop=loop)
     live = Thread(name='live', target=application_live, args=(loop, signals,))
