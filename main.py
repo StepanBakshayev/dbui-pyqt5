@@ -31,42 +31,35 @@ class ApplicationState(QObject):
 
 
 async def logic_process(signals):
-    import sys
     from asyncio import wait_for
     from asyncio import TimeoutError
     from asyncio import sleep
     while True:
-        # try:
-        #     event = await wait_for(signals.get(), 5)
-        #     print(repr(event))
-        #     signals.task_done()
-        # except TimeoutError:
-        #     print('no signals')
-        # await sleep(10)
-        sys.stdout.flush()
+        try:
+            event = await wait_for(signals.get(), 10)
+            print(repr(event), flush=True)
+            signals.task_done()
+        except TimeoutError:
+            print('no signals', flush=True)
 
 
 async def ping():
-    import sys
     from asyncio import sleep
     while True:
-        print('.', end='')
-        sys.stdout.flush()
+        print('.', end='', flush=True)
         await sleep(1)
 
 
 def application_live(loop, signals):
-    # loop.create_task(logic_process(signals))
-    # from asyncio import set_event_loop
-    # set_event_loop(loop)
+    from asyncio import set_event_loop
+    set_event_loop(loop)
     pinging = loop.create_task(ping())
-    print('run_forever')
-    import sys
-    sys.stdout.flush()
+    processing = loop.create_task(logic_process(signals))
     try:
         loop.run_forever()
     finally:
         pinging.cancel()
+        processing.cancel()
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
 
@@ -74,8 +67,8 @@ def application_live(loop, signals):
 if __name__ == '__main__':
     from asyncio import new_event_loop, Queue
     loop = new_event_loop()
-    # signals = Queue(loop=loop)
-    live = Thread(name='live', target=application_live, args=(loop, None,))
+    signals = Queue(loop=loop)
+    live = Thread(name='live', target=application_live, args=(loop, signals,))
     live.start()
 
     QGuiApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
@@ -83,11 +76,7 @@ if __name__ == '__main__':
     root = Path(__file__).absolute().parent
 
     application_state = ApplicationState(url='postgres://')
-    def pp(*args):
-        print(*args)
-        import sys
-        sys.stdout.flush()
-    application_state.connectDB.connect(lambda url: loop.call_soon_threadsafe(pp, url))
+    application_state.connectDB.connect(lambda url: loop.call_soon_threadsafe(signals.put_nowait, ('connectDB', url)))
 
     application = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
