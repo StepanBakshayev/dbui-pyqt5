@@ -30,23 +30,52 @@ class ApplicationState(QObject):
         self.url_ = url
 
 
-async def login_process():
-    from asyncio import sleep
+async def logic_process(signals):
     import sys
+    from asyncio import wait_for
+    from asyncio import TimeoutError
+    from asyncio import sleep
+    while True:
+        # try:
+        #     event = await wait_for(signals.get(), 5)
+        #     print(repr(event))
+        #     signals.task_done()
+        # except TimeoutError:
+        #     print('no signals')
+        # await sleep(10)
+        sys.stdout.flush()
+
+
+async def ping():
+    import sys
+    from asyncio import sleep
     while True:
         print('.', end='')
         sys.stdout.flush()
         await sleep(1)
 
 
-def application_live():
-    from asyncio import new_event_loop
-    loop = new_event_loop()
-    loop.run_until_complete(login_process())
+def application_live(loop, signals):
+    # loop.create_task(logic_process(signals))
+    # from asyncio import set_event_loop
+    # set_event_loop(loop)
+    pinging = loop.create_task(ping())
+    print('run_forever')
+    import sys
+    sys.stdout.flush()
+    try:
+        loop.run_forever()
+    finally:
+        pinging.cancel()
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
 
 
 if __name__ == '__main__':
-    live = Thread(name='live', target=application_live)
+    from asyncio import new_event_loop, Queue
+    loop = new_event_loop()
+    # signals = Queue(loop=loop)
+    live = Thread(name='live', target=application_live, args=(loop, None,))
     live.start()
 
     QGuiApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
@@ -54,7 +83,11 @@ if __name__ == '__main__':
     root = Path(__file__).absolute().parent
 
     application_state = ApplicationState(url='postgres://')
-    application_state.connectDB.connect(lambda url: print('connecting...', url))
+    def pp(*args):
+        print(*args)
+        import sys
+        sys.stdout.flush()
+    application_state.connectDB.connect(lambda url: loop.call_soon_threadsafe(pp, url))
 
     application = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
@@ -64,4 +97,7 @@ if __name__ == '__main__':
     window = engine.rootObjects()[0]
     window.show()
 
-    sys.exit(application.exec_())
+    status = application.exec_()
+    loop.call_soon_threadsafe(loop.stop)
+    live.join()
+    sys.exit(status)
